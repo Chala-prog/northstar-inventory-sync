@@ -1,27 +1,26 @@
-// Day 4 pivot — service entry point.
+// Hardening pass — persistence, staleness detection, read-side auth.
 //
-// The vendor is killing the 5-minute polling API in 48 hours. This is
-// no longer a poll-driven service: startPolling() is not called. Stock
-// updates now arrive via POST /webhooks/stock-update (see server.ts),
-// pushed by the warehouse the moment a level changes, instead of us
-// asking every 5 minutes.
+// The webhook-push architecture from Day 4 was correct in shape but
+// not production-viable: the cache was an in-memory Map, meaning every
+// restart silently lost all inventory data. This entry point now wires
+// in durable storage (db.ts, SQLite) instead of a Map — the service
+// survives a restart with its data intact.
 //
-// Day 3's polling call site has been removed here, not commented out
-// or left running alongside the webhook path — see poller.ts for the
-// deprecation notice, and git history for the pre-pivot version.
+// StockCache (in-memory) is no longer used by the running service —
+// superseded by db.ts, same discipline as the Day 4 pivot: marked
+// deprecated, not left running alongside its replacement.
 
-import { StockCache } from "./stockCache";
 import { startServer } from "./server";
+import { closeDb } from "./db";
 
 function main() {
-  const cache = new StockCache();
-
-  const server = startServer(cache);
+  const server = startServer();
 
   const shutdown = () => {
     console.log("\n[main] shutting down...");
     server.close(() => {
-      console.log("[main] server closed.");
+      closeDb();
+      console.log("[main] server closed, db closed.");
       process.exit(0);
     });
   };

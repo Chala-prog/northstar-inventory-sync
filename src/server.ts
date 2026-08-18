@@ -1,8 +1,10 @@
 import * as http from "http";
-import { StockCache } from "./stockCache";
 import { StockReading } from "./warehouseApi";
 import { SERVER_PORT, TRACKED_SKUS } from "./config";
 import { verifySignature } from "./webhookAuth";
+import { isValidApiKey } from "./readAuth";
+import { saveReading, getReading } from "./db";
+import { checkStaleness } from "./staleness";
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
   const payload = JSON.stringify(body);
@@ -30,14 +32,16 @@ function isWebhookPayload(value: unknown): value is WebhookPayload {
   return typeof v.sku === "string" && typeof v.level === "number";
 }
 
+function headerValue(h: string | string[] | undefined): string | undefined {
+  return Array.isArray(h) ? h[0] : h;
+}
+
 async function handleStockWebhook(
   req: http.IncomingMessage,
-  res: http.ServerResponse,
-  cache: StockCache
+  res: http.ServerResponse
 ): Promise<void> {
   const rawBody = await readRawBody(req);
-  const signature = req.headers["x-webhook-signature"];
-  const sigHeader = Array.isArray(signature) ? signature[0] : signature;
+  const sigHeader = headerValue(req.headers["x-webhook-signature"]);
 
   if (!verifySignature(rawBody, sigHeader)) {
     console.warn("[webhook] rejected: invalid or missing signature");
@@ -70,27 +74,61 @@ async function handleStockWebhook(
     level: parsed.level,
     checkedAt: new Date(),
   };
-  cache.set(reading);
 
-  console.log(`[webhook] pushed update: ${reading.sku} -> ${reading.level} units`);
+  // Persisted, not just cached in memory — survives a restart.
+  saveReading(reading);
+
+  console.log(`[webhook] pushed update: ${reading.sku} -> ${reading.level} units (persisted)`);
   sendJson(res, 202, { status: "accepted", sku: reading.sku });
 }
 
-export function startServer(cache: StockCache): http.Server {
+function handleStockQuery(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  sku: string
+): void {
+  const apiKey = headerValue(req.headers["x-api-key"]);
+  if (!isValidApiKey(apiKey)) {
+    sendJson(res, 401, { error: "invalid_or_missing_api_key" });
+    return;
+  }
+
+  const reading = getReading(sku);
+  if (!reading) {
+    sendJson(res, 404, {
+      error: "not_in_cache",
+      sku,
+      message: `No stored stock reading for "${sku}" yet — waiting on a webhook push.`,
+    });
+    return;
+  }
+
+  sendJson(res, 200, {
+    sku: reading.sku,
+    level: reading.level,
+    checkedAt: reading.checkedAt.toISOString(),
+  });
+}
+
+export function startServer(): http.Server {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${SERVER_PORT}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
+      const staleness = checkStaleness();
       sendJson(res, 200, {
         status: "ok",
         mode: "webhook-push",
+        storage: "sqlite (persistent)",
         trackedSkus: TRACKED_SKUS.length,
+        staleSkus: staleness.staleSkus,
+        staleThresholdMs: staleness.thresholdMs,
       });
       return;
     }
 
     if (req.method === "POST" && url.pathname === "/webhooks/stock-update") {
-      handleStockWebhook(req, res, cache).catch((err) => {
+      handleStockWebhook(req, res).catch((err) => {
         console.error("[webhook] unhandled error:", err);
         sendJson(res, 500, { error: "internal_error" });
       });
@@ -100,22 +138,7 @@ export function startServer(cache: StockCache): http.Server {
     const match = url.pathname.match(/^\/stock\/([^/]+)$/);
     if (req.method === "GET" && match) {
       const sku = decodeURIComponent(match[1]);
-      const reading = cache.get(sku);
-
-      if (!reading) {
-        sendJson(res, 404, {
-          error: "not_in_cache",
-          sku,
-          message: `No cached stock reading for "${sku}" yet — waiting on a webhook push.`,
-        });
-        return;
-      }
-
-      sendJson(res, 200, {
-        sku: reading.sku,
-        level: reading.level,
-        checkedAt: reading.checkedAt.toISOString(),
-      });
+      handleStockQuery(req, res, sku);
       return;
     }
 
@@ -123,7 +146,7 @@ export function startServer(cache: StockCache): http.Server {
   });
 
   server.listen(SERVER_PORT, () => {
-    console.log(`[server] listening on http://localhost:${SERVER_PORT} (webhook-push mode)`);
+    console.log(`[server] listening on http://localhost:${SERVER_PORT} (webhook-push, persistent, auth'd reads)`);
   });
 
   return server;
