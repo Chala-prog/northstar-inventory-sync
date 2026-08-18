@@ -1,37 +1,32 @@
-import { fetchStockLevel } from "./warehouseApi";
+// Day 3 service entry point — original spec:
+//   poll a warehouse API every 5 minutes, cache stock, expose a query
+//   endpoint.
+//
+// Days 1-2's one-shot demo (fetch a few SKUs once, print, exit) has
+// been replaced by this long-running service. See git history for the
+// Day 1-2 version if it's needed for reference.
+
 import { StockCache } from "./stockCache";
+import { startPolling } from "./poller";
+import { startServer } from "./server";
 
-const cache = new StockCache();
+function main() {
+  const cache = new StockCache();
 
-async function refreshSku(sku: string): Promise<void> {
-  try {
-    const reading = await fetchStockLevel(sku);
-    cache.set(reading);
-    console.log(`[cache] ${sku} -> ${reading.level} units (as of ${reading.checkedAt.toISOString()})`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[error] could not refresh ${sku}: ${message}`);
-  }
-}
+  const server = startServer(cache);
+  const pollHandle = startPolling(cache);
 
-async function main() {
-  const skus = ["SKU-100", "SKU-205", "SKU-404", "SKU-317"];
+  const shutdown = () => {
+    console.log("\n[main] shutting down...");
+    clearInterval(pollHandle);
+    server.close(() => {
+      console.log("[main] server closed.");
+      process.exit(0);
+    });
+  };
 
-  for (const sku of skus) {
-    await refreshSku(sku);
-  }
-
-  console.log("\n--- query endpoint simulation ---");
-  for (const sku of [...skus, "SKU-999-NOT-CACHED"]) {
-    const reading = cache.get(sku);
-    if (reading) {
-      console.log(`GET /stock/${sku} -> 200 { level: ${reading.level} }`);
-    } else {
-      console.log(`GET /stock/${sku} -> 404 not in cache`);
-    }
-  }
-
-  console.log(`\nCache holds ${cache.size()} SKU(s) after this run.`);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 main();
