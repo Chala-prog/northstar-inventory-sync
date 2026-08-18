@@ -1,24 +1,25 @@
-// Day 3 service entry point — original spec:
-//   poll a warehouse API every 5 minutes, cache stock, expose a query
-//   endpoint.
+// Day 4 pivot — service entry point.
 //
-// Days 1-2's one-shot demo (fetch a few SKUs once, print, exit) has
-// been replaced by this long-running service. See git history for the
-// Day 1-2 version if it's needed for reference.
+// The vendor is killing the 5-minute polling API in 48 hours. This is
+// no longer a poll-driven service: startPolling() is not called. Stock
+// updates now arrive via POST /webhooks/stock-update (see server.ts),
+// pushed by the warehouse the moment a level changes, instead of us
+// asking every 5 minutes.
+//
+// Day 3's polling call site has been removed here, not commented out
+// or left running alongside the webhook path — see poller.ts for the
+// deprecation notice, and git history for the pre-pivot version.
 
 import { StockCache } from "./stockCache";
-import { startPolling } from "./poller";
 import { startServer } from "./server";
 
 function main() {
   const cache = new StockCache();
 
   const server = startServer(cache);
-  const pollHandle = startPolling(cache);
 
   const shutdown = () => {
     console.log("\n[main] shutting down...");
-    clearInterval(pollHandle);
     server.close(() => {
       console.log("[main] server closed.");
       process.exit(0);
