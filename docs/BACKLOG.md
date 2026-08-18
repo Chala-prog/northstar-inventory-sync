@@ -14,24 +14,46 @@ reading as a fresh wishlist.
 
 ---
 
+## P0 — DONE
+
+### 1. Staleness / heartbeat detection — ✅ closed
+- **Originated:** Day 4 pivot. Flagged in Scope Delta Analysis §5.
+- **Closed by:** `src/staleness.ts` + `/health` now returns `staleSkus`.
+  Verified live with a forced low threshold — a real reading was
+  correctly flagged as stale, not just reported as an empty list.
+- **What's still open:** this reports staleness on request, it doesn't
+  alert anyone. Wiring `/health`'s output into real monitoring
+  (PagerDuty, a Slack webhook, whatever Northstar uses) is follow-up
+  work, not done here.
+
 ## P0 — Next up
 
-### 1. Staleness / heartbeat detection
-- **Originated:** Day 4 pivot. Flagged in Scope Delta Analysis §5 as the
-  biggest conceptual risk of the new architecture.
-- **Why it's P0:** polling had a *built-in* staleness ceiling — 5
-  minutes, guaranteed by the loop. Webhook push has none. If the
-  vendor's sender silently stops firing for one SKU, the cache serves a
-  confidently-wrong "last known" value forever, with nothing in the
-  system noticing. This is the one gap that can cause a silent,
-  undetected production incident rather than a loud failure.
-- **Shape of the fix:** track `checkedAt` per SKU (already stored on
-  `StockReading`) and expose a simple `GET /health` field like
-  `staleSkus: string[]` for anything not updated in, say, 2x the
-  expected push cadence. Small addition — most of the data needed is
-  already in the cache.
+### NEW: In-memory-only storage — ✅ closed, was the actual top blocker
+- **Originated:** identified after the sprint's original scope, when
+  asked directly "is this enough for a live service." It wasn't — an
+  in-memory `Map` lost all data on every restart, which is worse than
+  the staleness gap since it's total data loss, not delayed detection.
+- **Closed by:** `src/db.ts`, SQLite via `node:sqlite`. Verified with an
+  actual kill-and-restart test — data pushed by one process was read
+  back correctly by a completely separate process afterward, not just
+  asserted to persist.
+- **What's still open:** `node:sqlite` is an experimental Node API
+  (`--experimental-sqlite` flag required). Fine for this hardening
+  pass; a real production deploy should evaluate a stable client
+  (Postgres, most likely, to match whatever Northstar already runs)
+  rather than depend on an experimental built-in long-term.
 
 ## P1 — Soon after
+
+### NEW: Read-side auth — ✅ closed
+- **Originated:** identified in the same "is this enough for a live
+  service" review as the persistence gap. `GET /stock/:sku` had zero
+  auth — anyone reaching the port could read Northstar's live inventory.
+- **Closed by:** `src/readAuth.ts`, a constant-time API-key check.
+  Verified live: no key → 401, wrong key → 401, correct key → 200.
+- **What's still open:** a single shared key is minimal, appropriate
+  for one internal caller (the support tool). A real deployment with
+  multiple consumers would want per-client keys or a real auth system.
 
 ### 2. Replay protection on the webhook route
 - **Originated:** Day 4 pivot. Explicitly scoped out in Scope Delta

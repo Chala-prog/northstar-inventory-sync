@@ -17,13 +17,16 @@ verification run captured earlier in the build process.
 
 ```
 src/
-  stockCache.ts    — in-memory cache, keyed by SKU
-  webhookAuth.ts    — HMAC-SHA256 signature verification (timing-safe)
-  server.ts        — HTTP server: POST /webhooks/stock-update, GET /stock/:sku, GET /health
-  config.ts        — tracked SKU catalog, server port
-  index.ts         — entry point: starts the server, no polling
-  warehouseApi.ts   — DEPRECATED, kept for history (see below)
-  poller.ts        — DEPRECATED, kept for history (see below)
+  db.ts             — SQLite persistence (survives restart — verified with a real kill+restart test)
+  staleness.ts       — flags SKUs not updated recently, reported on /health
+  readAuth.ts        — API-key check on the query endpoint
+  webhookAuth.ts      — HMAC-SHA256 signature verification (timing-safe)
+  server.ts          — HTTP server: POST /webhooks/stock-update, GET /stock/:sku (auth'd), GET /health
+  config.ts          — tracked SKU catalog, server port
+  index.ts           — entry point: starts the server, closes the DB on shutdown
+  warehouseApi.ts     — DEPRECATED, kept for history
+  poller.ts          — DEPRECATED, kept for history
+  stockCache.ts       — DEPRECATED (in-memory Map), superseded by db.ts
 ```
 
 Run it:
@@ -31,11 +34,28 @@ Run it:
 npm install
 npm run build && npm start
 ```
+(`start` includes `--experimental-sqlite`, required by `node:sqlite` on Node 22.)
 
-Northstar's support tool now gets stock answers by us **receiving**
-pushes from the warehouse the moment a level changes (`POST
-/webhooks/stock-update`, HMAC-signed), rather than us asking every 5
-minutes. `GET /stock/:sku` is what the support tool actually calls.
+Northstar's support tool gets stock answers by us **receiving** pushes
+from the warehouse the moment a level changes (`POST
+/webhooks/stock-update`, HMAC-signed), storing them **durably**
+(SQLite, not memory), and serving reads through an **authenticated**
+query endpoint (`GET /stock/:sku`, requires `X-API-Key`).
+
+## Was the original build enough for a live service? No — here's what changed since
+
+The webhook architecture was sound, but three gaps made it unfit for
+anything real, closed in a hardening pass after the original sprint:
+
+| Gap | Risk | Fix | Verified how |
+|---|---|---|---|
+| In-memory cache | Total data loss on every restart | SQLite persistence (`db.ts`) | Killed the process, started a new one, read back data the old process wrote |
+| No staleness detection | A dead webhook stream fails silently forever | `staleness.ts` on `/health` | Forced a low threshold, confirmed a real reading got flagged |
+| No read-side auth | Anyone reaching the port could read live inventory | API-key check (`readAuth.ts`) | No key / wrong key / right key all tested live |
+
+Still open, ranked in `docs/BACKLOG.md`: replay protection on the
+webhook route, moving off the experimental `node:sqlite` API for a real
+deploy, secret management, dead-config cleanup, and automated tests.
 
 ## How the sprint got here — Days 1 through 5
 
