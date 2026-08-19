@@ -1,4 +1,6 @@
-# Northstar Retail Co. — Live Inventory Sync Service (Sprint 2)
+# Meridian Pivot — Northstar Inventory Sync Service
+
+**Assignment:** The Meridian Pivot (Sprint 2 evaluation)
 
 **Client:** Northstar Retail Co.
 **Ask:** a live inventory sync service so their support tool's "is this
