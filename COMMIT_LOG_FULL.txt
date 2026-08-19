@@ -1,6 +1,0 @@
-d4d2b7c 2026-08-18 08:34:47 +0000 Day 5: ship webhook-push spec (verified via regression check), Scope Delta Analysis, and confidential Adaptability Index
-ca6990f 2026-08-18 07:59:56 +0000 Day 4 pivot: replace polling with webhook push (HMAC-verified POST /webhooks/stock-update); poller.ts and fetchStockLevel() deprecated and removed from the running service; verified end-to-end incl. rejected bad signatures
-0b5b7da 2026-08-18 07:36:32 +0000 Day 3: rewire index.ts as the real long-running service (server + poller + graceful shutdown); verified end-to-end against original spec
-f133488 2026-08-18 07:36:11 +0000 Day 3: add poller (5-min cycle, concurrent fetch via Promise.allSettled) and HTTP query endpoint
-cd2496b 2026-08-18 07:35:50 +0000 Day 3: add config module (5-min poll interval, tracked SKU catalog); fix missing node types in tsconfig
-9ef1a33 2026-08-18 07:35:29 +0000 Day 1-2: TS mini-prototype (mock warehouse API, in-memory cache) + blocker journal
