@@ -98,7 +98,11 @@ test suite are cleanup, not urgent (P2).
 
 ## Docs
 
-- `docs/LEARNING_AND_BLOCKER_JOURNAL.md` — Assignment 1
+- `docs/LEARNING_AND_BLOCKER_JOURNAL.md` — Assignment 1 (6 sessions:
+  original TypeScript blockers, a documented dead end, a hard
+  time-box declared and honestly exceeded, and an OS-enforced hard
+  cutoff proven by exit code 124 — see `assignment1-demo/` for the
+  source these sessions were built against)
 - `docs/SCOPE_DELTA_ANALYSIS.md` — Assignment 2
 - `docs/BACKLOG.md` — Assignment 2 (trade-off documentation)
 - `docs/ADAPTABILITY_INDEX.md` — Assignment 3 (self-rated; see note

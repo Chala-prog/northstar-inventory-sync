@@ -1,0 +1,9 @@
+{
+  "name": "assignment1-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && node dist/index.js"
+  }
+}
