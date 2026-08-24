@@ -10,8 +10,25 @@
 // superseded by db.ts, same discipline as the Day 4 pivot: marked
 // deprecated, not left running alongside its replacement.
 
-import { startServer } from "./server";
-import { closeDb } from "./db";
+import express from "express";
+import { initDb, closeDb } from "./db";   // durable SQLite persistence
+import { webhookRouter } from "./webhook"; // webhook route with replay protection
+
+const app = express();
+app.use(express.json());
+
+// mount webhook route
+app.use("/webhook", webhookRouter);
+
+export default app;
+
+function startServer() {
+  initDb(); // open DB connection
+  const server = app.listen(3000, () => {
+    console.log("[main] server running on port 3000");
+  });
+  return server;
+}
 
 function main() {
   const server = startServer();
