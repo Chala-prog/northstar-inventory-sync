@@ -78,8 +78,8 @@ async function handleStockWebhook(
   // Persisted, not just cached in memory — survives a restart.
   const db = getDb();
   await db.run(
-    "INSERT INTO events (event_id, stock_update) VALUES (?, ?)",
-    [reading.sku, reading.level]
+    "INSERT INTO events (event_id, stock_update, created_at) VALUES (?, ?, ?)",
+    [reading.sku, reading.level, reading.checkedAt.toISOString()]
   );
 
   console.log(`[webhook] pushed update: ${reading.sku} -> ${reading.level} units (persisted)`);
@@ -121,14 +121,18 @@ export function startServer(): http.Server {
     const url = new URL(req.url ?? "/", `http://localhost:${SERVER_PORT}`);
 
     if (req.method === "GET" && url.pathname === "/health") {
-      const staleness = checkStaleness();
-      sendJson(res, 200, {
-        status: "ok",
-        mode: "webhook-push",
-        storage: "sqlite (persistent)",
-        trackedSkus: TRACKED_SKUS.length,
-        staleSkus: staleness.staleSkus,
-        staleThresholdMs: staleness.thresholdMs,
+      checkStaleness().then((staleness) => {
+        sendJson(res, 200, {
+          status: "ok",
+          mode: "webhook-push",
+          storage: "sqlite (persistent)",
+          trackedSkus: TRACKED_SKUS.length,
+          staleSkus: staleness.staleSkus,
+          staleThresholdMs: staleness.thresholdMs,
+        });
+      }).catch((err) => {
+        console.error("[health] error:", err);
+        sendJson(res, 500, { error: "internal_error" });
       });
       return;
     }
