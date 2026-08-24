@@ -3,18 +3,14 @@ import { open, Database } from "sqlite";
 
 let db: Database | null = null;
 
-/**
- * Initialize SQLite database connection and schema.
- */
 export async function initDb() {
-  if (db) return db; // already initialized
+  if (db) return db;
 
   db = await open({
-    filename: "inventory.db", // persistent file storage
+    filename: "inventory.db",
     driver: sqlite3.Database,
   });
 
-  // Create events table if not exists
   await db.exec(`
     CREATE TABLE IF NOT EXISTS events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,27 +20,19 @@ export async function initDb() {
     )
   `);
 
-  console.log("[db] initialized and schema ensured.");
+  console.log("[db] initialized.");
   return db;
 }
 
-/**
- * Get the active database connection.
- */
 export function getDb(): Database {
-  if (!db) {
-    throw new Error("Database not initialized. Call initDb() first.");
-  }
+  if (!db) throw new Error("Database not initialized. Call initDb() first.");
   return db;
 }
 
-/**
- * Close the database connection.
- */
 export async function closeDb() {
   if (db) {
     await db.close();
     db = null;
-    console.log("[db] connection closed.");
+    console.log("[db] closed.");
   }
 }
