@@ -11,8 +11,8 @@
 // deprecated, not left running alongside its replacement.
 
 import express from "express";
-import { initDb, closeDb } from "./db";   // durable SQLite persistence
-import { webhookRouter } from "./webhook"; // webhook route with replay protection
+import { initDb, closeDb } from "./db";        // durable SQLite persistence
+import { webhookRouter } from "./webhook";     // webhook route with replay protection
 
 const app = express();
 app.use(express.json());
@@ -23,10 +23,13 @@ app.use("/webhook", webhookRouter);
 export default app;
 
 function startServer() {
-  initDb(); // open DB connection
+  // open DB connection
+  initDb();
+
   const server = app.listen(3000, () => {
     console.log("[main] server running on port 3000");
   });
+
   return server;
 }
 
