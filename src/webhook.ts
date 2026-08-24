@@ -1,9 +1,12 @@
-// src/webhook.ts
 import { Router } from "express";
 import { getDb } from "./db";
 
 export const webhookRouter = Router();
 
+/**
+ * Replay-protected webhook route.
+ * Accepts stock updates and persists them in SQLite.
+ */
 webhookRouter.post("/", async (req, res) => {
   const { event_id, stock_update } = req.body;
 
