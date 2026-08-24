@@ -1,34 +1,39 @@
-import { getAllReadings } from "./db";
+import { getDb } from "./db";
+import { TRACKED_SKUS } from "./config";
 
-// P0 backlog item: polling had a built-in staleness ceiling (5 min).
-// Webhook push has none — if the vendor's sender goes silent for a
-// SKU, we'd otherwise serve a confidently-wrong "last known" value
-// forever with nothing noticing. This surfaces that condition instead
-// of hiding it.
-
-const STALE_THRESHOLD_MS = Number(process.env.STALE_THRESHOLD_MS ?? 15 * 60 * 1000); // 15 min default
-
-export interface StalenessReport {
+interface StalenessReport {
   staleSkus: string[];
-  freshSkus: string[];
   thresholdMs: number;
 }
 
-export function checkStaleness(): StalenessReport {
+/**
+ * Check for SKUs whose last reading is older than the threshold.
+ */
+export async function checkStaleness(thresholdMs = 5 * 60 * 1000): Promise<StalenessReport> {
+  const db = getDb();
+
+  // Get the most recent reading per SKU
+  const rows = await db.all(`
+    SELECT event_id AS sku, MAX(created_at) AS last_seen
+    FROM events
+    GROUP BY event_id
+  `);
+
   const now = Date.now();
-  const readings = getAllReadings();
-
   const staleSkus: string[] = [];
-  const freshSkus: string[] = [];
 
-  for (const reading of readings) {
-    const ageMs = now - reading.checkedAt.getTime();
-    if (ageMs > STALE_THRESHOLD_MS) {
-      staleSkus.push(reading.sku);
-    } else {
-      freshSkus.push(reading.sku);
+  for (const sku of TRACKED_SKUS) {
+    const row = rows.find((r) => r.sku === sku);
+    if (!row) {
+      // No reading yet → considered stale
+      staleSkus.push(sku);
+      continue;
+    }
+    const lastSeen = new Date(row.last_seen).getTime();
+    if (now - lastSeen > thresholdMs) {
+      staleSkus.push(sku);
     }
   }
 
-  return { staleSkus, freshSkus, thresholdMs: STALE_THRESHOLD_MS };
+  return { staleSkus, thresholdMs };
 }
