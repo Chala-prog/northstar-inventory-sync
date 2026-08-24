@@ -3,7 +3,7 @@ import { StockReading } from "./warehouseApi";
 import { SERVER_PORT, TRACKED_SKUS } from "./config";
 import { verifySignature } from "./webhookAuth";
 import { isValidApiKey } from "./readAuth";
-import { saveReading, getReading } from "./db";
+import { getDb } from "./db";
 import { checkStaleness } from "./staleness";
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown) {
@@ -76,24 +76,30 @@ async function handleStockWebhook(
   };
 
   // Persisted, not just cached in memory — survives a restart.
-  saveReading(reading);
+  const db = getDb();
+  await db.run(
+    "INSERT INTO events (event_id, stock_update) VALUES (?, ?)",
+    [reading.sku, reading.level]
+  );
 
   console.log(`[webhook] pushed update: ${reading.sku} -> ${reading.level} units (persisted)`);
   sendJson(res, 202, { status: "accepted", sku: reading.sku });
 }
 
-function handleStockQuery(
+async function handleStockQuery(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   sku: string
-): void {
+): Promise<void> {
   const apiKey = headerValue(req.headers["x-api-key"]);
   if (!isValidApiKey(apiKey)) {
     sendJson(res, 401, { error: "invalid_or_missing_api_key" });
     return;
   }
 
-  const reading = getReading(sku);
+  const db = getDb();
+  const reading = await db.get("SELECT * FROM events WHERE event_id = ?", [sku]);
+
   if (!reading) {
     sendJson(res, 404, {
       error: "not_in_cache",
@@ -104,9 +110,9 @@ function handleStockQuery(
   }
 
   sendJson(res, 200, {
-    sku: reading.sku,
-    level: reading.level,
-    checkedAt: reading.checkedAt.toISOString(),
+    sku: reading.event_id,
+    level: reading.stock_update,
+    checkedAt: reading.created_at,
   });
 }
 
@@ -138,7 +144,10 @@ export function startServer(): http.Server {
     const match = url.pathname.match(/^\/stock\/([^/]+)$/);
     if (req.method === "GET" && match) {
       const sku = decodeURIComponent(match[1]);
-      handleStockQuery(req, res, sku);
+      handleStockQuery(req, res, sku).catch((err) => {
+        console.error("[query] unhandled error:", err);
+        sendJson(res, 500, { error: "internal_error" });
+      });
       return;
     }
 
