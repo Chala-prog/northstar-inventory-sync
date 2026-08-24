@@ -1,0 +1,20 @@
+// src/webhook.ts
+import { Router } from "express";
+import { getDb } from "./db";
+
+export const webhookRouter = Router();
+
+webhookRouter.post("/", async (req, res) => {
+  const { event_id, stock_update } = req.body;
+  if (!event_id) return res.status(400).send({ error: "Missing event_id" });
+
+  const db = getDb();
+  const exists = await db.get("SELECT 1 FROM events WHERE event_id = ?", [event_id]);
+
+  if (exists) {
+    return res.status(200).send({ status: "duplicate ignored" });
+  }
+
+  await db.run("INSERT INTO events (event_id, stock_update) VALUES (?, ?)", [event_id, stock_update]);
+  res.status(200).send({ status: "processed" });
+});
